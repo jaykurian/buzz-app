@@ -140,6 +140,11 @@ export type EventViewSnapshot = Readonly<{
   error?: string | undefined;
 }>;
 
+/** The live recovery tick repairs unread at most this often. The live stream
+ * carries every unread change; this read only backs up what it can lose with
+ * no signal: a channel the relay pruned from a batch, or a dropped fan-out. */
+export const UNREAD_BACKSTOP_INTERVAL = 15 * 60_000;
+
 /** Compose once per relay/viewer. Plugins get one interface; the host owns disposal. */
 /** A read of named authors' profiles only. Profiles do not depend on channels,
  * so no channel access change, including a denied channel list, can stale it. */
@@ -3057,6 +3062,13 @@ export function createRelaySession(
   // the sidebar page to mount and observe them.
   if (options.warm) void sidebarPreferences.queries.ensure();
   let refreshedGeneration = -1;
+  /** When unread was last asked to repair: a connection's first
+   * establishment, then the recovery tick's backstop. */
+  let unreadRepairedAt = 0;
+  const repairUnread = () => {
+    unreadRepairedAt = Date.now();
+    unread.reconnect();
+  };
   /** Held profiles still need a full read: none has completed since the
    * session started or since the last one was asked for. */
   let profilesOwed = true;
@@ -3429,7 +3441,7 @@ export function createRelaySession(
               refreshChannelActivity();
               emoji.reconnect();
               statuses.reconnect();
-              unread.reconnect();
+              repairUnread();
               inboxFeed.reconnect();
               // Only while this same connection is still up.
               if (generation === liveGeneration && memoryConnected)
@@ -3470,7 +3482,8 @@ export function createRelaySession(
     recover() {
       if (closed) return;
       refreshRoster();
-      unread.reconnect();
+      if (Date.now() - unreadRepairedAt >= UNREAD_BACKSTOP_INTERVAL)
+        repairUnread();
     },
     denied(channelId, reason) {
       if (!closed) channels.denyChannel(channelId, new Error(reason));

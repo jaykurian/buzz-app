@@ -953,7 +953,11 @@ the same source but obey the existing cooldown and three-retry limit. Exhausted
 or unsupported quota retries require manual Retry, not a reset each minute.
 
 One 60-second recovery timer renews established joined batches and hints the
-existing roster and unread owners to repair finite evidence. It does not renew
+roster owner to repair finite evidence. It hints the unread owner at most every
+15 minutes (`UNREAD_BACKSTOP_INTERVAL`), counted from that owner's last repair,
+which each connection's first establishment also asks for: the live stream
+carries every unread change, and this backstop only repairs what it lost with no
+signal (a channel the relay pruned from a batch, or a dropped fan-out). It does not renew
 singleton previews or add per-channel background history reads. When the socket
 delivered no frame for a whole interval, the timer also sends one empty probe
 REQ; if no frame arrives within the setup timeout, the socket is replaced through
